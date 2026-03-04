@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fintech AI Agent - Portfolio Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .floating-card {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .floating-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+        .pulse-badge {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .ticker-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin: 0.25rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .ticker-badge:hover {
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 text-white shadow-2xl">
+        <div class="container mx-auto px-4 py-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-4xl font-bold flex items-center gap-3">
+                        <i class="fas fa-chart-line"></i>
+                        Fintech AI Agent
+                    </h1>
+                    <p class="text-purple-100 mt-2">Your Personal AI-Powered Portfolio News Digest</p>
+                </div>
+                <div id="refreshButton" class="hidden">
+                    <button 
+                        onclick="refreshDigestNow()"
+                        class="bg-white text-purple-600 px-6 py-3 rounded-full font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2">
+                        <i class="fas fa-sync-alt"></i>
+                        Get Latest News
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container mx-auto px-4 py-8">
+        <!-- User Setup -->
+        <div id="loginSection" class="bg-white rounded-2xl shadow-xl p-8 mb-8 border-t-4 border-purple-600">
+            <h2 class="text-2xl font-bold mb-6 flex items-center gap-2">
+                <i class="fas fa-user-circle text-purple-600"></i>
+                Sign In to Your Portfolio
+            </h2>
+            <div class="flex gap-4">
+                <input 
+                    type="email" 
+                    id="userEmail" 
+                    placeholder="Enter your email address"
+                    class="flex-1 px-6 py-4 border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-purple-500 focus:border-purple-500 transition text-lg"
+                    onkeypress="if(event.key==='Enter') signIn()"
+                >
+                <button 
+                    onclick="signIn()"
+                    class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-10 py-4 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all">
+                    <i class="fas fa-sign-in-alt mr-2"></i>Sign In
+                </button>
+            </div>
+            <div id="userInfo" class="mt-6 hidden">
+                <div class="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 text-green-800 px-6 py-4 rounded-xl flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-check-circle text-2xl"></i>
+                        <span id="currentUserEmail" class="text-lg font-semibold"></span>
+                    </div>
+                    <button onclick="signOut()" class="text-red-600 hover:text-red-800 font-medium">
+                        <i class="fas fa-sign-out-alt mr-1"></i>Sign Out
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content (Hidden until signed in) -->
+        <div id="mainContent" class="hidden">
+            <!-- Quick Add Section -->
+            <div class="grid md:grid-cols-2 gap-6 mb-8">
+                <!-- Popular Stocks -->
+                <div class="bg-white rounded-2xl shadow-xl p-6 border-t-4 border-blue-600">
+                    <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+                        <i class="fas fa-fire text-orange-500"></i>
+                        Trending Stocks
+                    </h3>
+                    <div class="flex flex-wrap gap-2 mb-4">
+                        <span onclick="quickAddStock('AAPL', 'Apple Inc.')" class="ticker-badge bg-gradient-to-r from-gray-700 to-gray-900 text-white">
+                            <i class="fab fa-apple mr-1"></i>AAPL
+                        </span>
+                        <span onclick="quickAddStock('TSLA', 'Tesla Inc.')" class="ticker-badge bg-gradient-to-r from-red-600 to-red-700 text-white">
+                            <i class="fas fa-bolt mr-1"></i>TSLA
+                        </span>
+                        <span onclick="quickAddStock('GOOGL', 'Alphabet Inc.')" class="ticker-badge bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+                            <i class="fab fa-google mr-1"></i>GOOGL
+                        </span>
+                        <span onclick="quickAddStock('MSFT', 'Microsoft Corp.')" class="ticker-badge bg-gradient-to-r from-blue-400 to-cyan-500 text-white">
+                            <i class="fab fa-microsoft mr-1"></i>MSFT
+                        </span>
+                        <span onclick="quickAddStock('NVDA', 'NVIDIA Corp.')" class="ticker-badge bg-gradient-to-r from-green-500 to-emerald-600 text-white">
+                            <i class="fas fa-microchip mr-1"></i>NVDA
+                        </span>
+                        <span onclick="quickAddStock('AMZN', 'Amazon.com Inc.')" class="ticker-badge bg-gradient-to-r from-orange-400 to-orange-500 text-white">
+                            <i class="fab fa-amazon mr-1"></i>AMZN
+                        </span>
+                        <span onclick="quickAddStock('META', 'Meta Platforms')" class="ticker-badge bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+                            <i class="fab fa-meta mr-1"></i>META
+                        </span>
+                        <span onclick="quickAddStock('NFLX', 'Netflix Inc.')" class="ticker-badge bg-gradient-to-r from-red-600 to-red-800 text-white">
+                            <i class="fas fa-film mr-1"></i>NFLX
+                        </span>
+                    </div>
+                    <div class="flex gap-3">
+                        <input 
+                            type="text" 
+                            id="customTicker" 
+                            placeholder="Or enter custom ticker"
+                            class="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase"
+                            onkeypress="if(event.key==='Enter') addCustomStock()"
+                        >
+                        <button 
+                            onclick="addCustomStock()"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Popular Topics -->
+                <div class="bg-white rounded-2xl shadow-xl p-6 border-t-4 border-purple-600">
+                    <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+                        <i class="fas fa-hashtag text-purple-500"></i>
+                        Hot Topics
+                    </h3>
+                    <div id="topicBubbles" class="flex flex-wrap gap-2">
+                        <!-- Topics will be dynamically added here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="bg-white rounded-2xl shadow-xl mb-8">
+                <div class="border-b border-gray-200">
+                    <nav class="flex">
+                        <button 
+                            onclick="switchTab('stocks')" 
+                            id="stocksTab"
+                            class="tab-button px-8 py-5 font-bold border-b-4 border-purple-600 text-purple-600 flex items-center gap-2">
+                            <i class="fas fa-wallet"></i>My Portfolio
+                        </button>
+                        <button 
+                            onclick="switchTab('topics')" 
+                            id="topicsTab"
+                            class="tab-button px-8 py-5 font-bold border-b-4 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
+                            <i class="fas fa-tags"></i>My Topics
+                        </button>
+                        <button 
+                            onclick="switchTab('digest')" 
+                            id="digestTab"
+                            class="tab-button px-8 py-5 font-bold border-b-4 border-transparent text-gray-500 hover:text-gray-700 flex items-center gap-2">
+                            <i class="fas fa-newspaper"></i>News Digest
+                            <span id="digestBadge" class="hidden ml-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full pulse-badge">NEW</span>
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="p-8">
+                    <!-- Stocks Tab -->
+                    <div id="stocksContent" class="tab-content">
+                        <div id="stocksList" class="grid md:grid-cols-2 gap-4">
+                            <!-- Stocks will be loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- Topics Tab -->
+                    <div id="topicsContent" class="tab-content hidden">
+                        <div id="selectedTopicsList" class="grid md:grid-cols-3 gap-3">
+                            <!-- Selected topics will be loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- Digest Tab -->
+                    <div id="digestContent" class="tab-content hidden">
+                        <div id="digestSummaries" class="space-y-6">
+                            <!-- Summaries will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl p-8 shadow-2xl text-center">
+            <i class="fas fa-spinner fa-spin text-6xl text-purple-600 mb-4"></i>
+            <p class="text-xl font-semibold text-gray-800">Fetching Latest News...</p>
+            <p class="text-gray-600 mt-2">This may take a minute</p>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin + '/api';
+        let currentUserId = null;
+
+        // Sign in - create or load user
+        async function signIn() {
+            const email = document.getElementById('userEmail').value.trim();
+            if (!email) {
+                alert('Please enter your email');
+                return;
+            }
+
+            try {
+                // Try to load existing user first
+                const loadResponse = await fetch(`${API_URL}/users/by-email/${encodeURIComponent(email)}`);
+                
+                if (loadResponse.ok) {
+                    // User exists, load their data
+                    const user = await loadResponse.json();
+                    currentUserId = user.id;
+                    showUserInfo(email);
+                    loadUserData();
+                } else {
+                    // User doesn't exist, create new
+                    const createResponse = await fetch(`${API_URL}/users`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email })
+                    });
+
+                    if (createResponse.ok) {
+                        const user = await createResponse.json();
+                        currentUserId = user.id;
+                        showUserInfo(email);
+                        loadUserData();
+                    } else {
+                        alert('Error creating account');
+                    }
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error connecting to server. Make sure the backend is running!');
+            }
+        }
+
+        function showUserInfo(email) {
+            document.getElementById('currentUserEmail').textContent = `Signed in as: ${email}`;
+            document.getElementById('userInfo').classList.remove('hidden');
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('mainContent').classList.remove('hidden');
+            document.getElementById('refreshButton').classList.remove('hidden');
+        }
+
+        function signOut() {
+            currentUserId = null;
+            document.getElementById('userInfo').classList.add('hidden');
+            document.getElementById('loginSection').classList.remove('hidden');
+            document.getElementById('mainContent').classList.add('hidden');
+            document.getElementById('refreshButton').classList.add('hidden');
+            document.getElementById('userEmail').value = '';
+        }
+
+        function loadUserData() {
+            loadStocks();
+            loadTopics();
+            loadAvailableTopics();
+            loadDigest();
+        }
+
+        // Manual refresh digest
+        async function refreshDigestNow() {
+            if (!currentUserId) return;
+
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+
+            try {
+                const response = await fetch(`${API_URL}/trigger-digest`, {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    // Show success and reload digest
+                    setTimeout(() => {
+                        loadDigest();
+                        document.getElementById('loadingOverlay').classList.add('hidden');
+                        document.getElementById('digestBadge').classList.remove('hidden');
+                        switchTab('digest');
+                        alert(`✅ Success!\n\n📰 Fetched: ${result.articles_fetched} articles\n🤖 Processed: ${result.summaries_processed} summaries\n📧 Emails sent: ${result.emails_sent}`);
+                    }, 2000);
+                } else {
+                    document.getElementById('loadingOverlay').classList.add('hidden');
+                    alert('Error fetching news. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('loadingOverlay').classList.add('hidden');
+                alert('Error connecting to server');
+            }
+        }
+
+        // Switch between tabs
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-button').forEach(el => {
+                el.classList.remove('border-purple-600', 'text-purple-600');
+                el.classList.add('border-transparent', 'text-gray-500');
+            });
+
+            document.getElementById(`${tab}Content`).classList.remove('hidden');
+            document.getElementById(`${tab}Tab`).classList.remove('border-transparent', 'text-gray-500');
+            document.getElementById(`${tab}Tab`).classList.add('border-purple-600', 'text-purple-600');
+
+            if (tab === 'digest') {
+                document.getElementById('digestBadge').classList.add('hidden');
+                loadDigest();
+            }
+        }
+
+        // Quick add stock
+        async function quickAddStock(ticker, company) {
+            if (!currentUserId) {
+                alert('Please sign in first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/users/${currentUserId}/stocks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker, company_name: company })
+                });
+
+                if (response.ok) {
+                    loadStocks();
+                } else {
+                    const error = await response.json();
+                    if (error.detail !== 'Stock already in portfolio') {
+                        alert(error.detail);
+                    }
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        // Add custom stock
+        async function addCustomStock() {
+            const ticker = document.getElementById('customTicker').value.trim().toUpperCase();
+            if (ticker) {
+                await quickAddStock(ticker, null);
+                document.getElementById('customTicker').value = '';
+            }
+        }
+
+        // Load stocks
+        async function loadStocks() {
+            if (!currentUserId) return;
+
+            try {
+                const response = await fetch(`${API_URL}/users/${currentUserId}/stocks`);
+                const stocks = await response.json();
+
+                const container = document.getElementById('stocksList');
+                if (stocks.length === 0) {
+                    container.innerHTML = '<div class="col-span-2 text-center py-12"><i class="fas fa-chart-line text-6xl text-gray-300 mb-4"></i><p class="text-gray-500 text-lg">No stocks in your portfolio yet. Click a trending stock above!</p></div>';
+                    return;
+                }
+
+                container.innerHTML = stocks.map(stock => `
+                    <div class="floating-card bg-gradient-to-br from-white to-gray-50 p-6 rounded-xl border-2 border-gray-200 hover:border-purple-400">
+                        <div class="flex items-center justify-between">
+                            <div class="flex-1">
+                                <div class="text-3xl font-bold text-purple-600 mb-1">${stock.ticker}</div>
+                                ${stock.company_name ? `<div class="text-gray-600">${stock.company_name}</div>` : ''}
+                            </div>
+                            <button 
+                                onclick="deleteStock(${stock.id})"
+                                class="text-red-500 hover:text-red-700 hover:bg-red-50 p-3 rounded-full transition">
+                                <i class="fas fa-trash-alt text-xl"></i>
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function deleteStock(stockId) {
+            if (!confirm('Remove this stock from your portfolio?')) return;
+
+            try {
+                await fetch(`${API_URL}/users/${currentUserId}/stocks/${stockId}`, {
+                    method: 'DELETE'
+                });
+                loadStocks();
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        // Load available topics with bubbles
+        async function loadAvailableTopics() {
+            try {
+                const response = await fetch(`${API_URL}/topics/available`);
+                const data = await response.json();
+
+                const container = document.getElementById('topicBubbles');
+                const colors = [
+                    'from-purple-500 to-purple-600',
+                    'from-blue-500 to-blue-600',
+                    'from-green-500 to-green-600',
+                    'from-yellow-500 to-yellow-600',
+                    'from-red-500 to-red-600',
+                    'from-pink-500 to-pink-600',
+                    'from-indigo-500 to-indigo-600'
+                ];
+
+                container.innerHTML = data.topics.slice(0, 12).map((topic, idx) => `
+                    <span 
+                        onclick="addTopic('${topic}')"
+                        class="ticker-badge bg-gradient-to-r ${colors[idx % colors.length]} text-white text-sm">
+                        ${topic}
+                    </span>
+                `).join('');
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        // Load selected topics
+        async function loadTopics() {
+            if (!currentUserId) return;
+
+            try {
+                const response = await fetch(`${API_URL}/users/${currentUserId}/topics`);
+                const topics = await response.json();
+
+                const container = document.getElementById('selectedTopicsList');
+                if (topics.length === 0) {
+                    container.innerHTML = '<div class="col-span-3 text-center py-12"><i class="fas fa-tags text-6xl text-gray-300 mb-4"></i><p class="text-gray-500 text-lg">No topics selected yet. Click a topic above!</p></div>';
+                    return;
+                }
+
+                container.innerHTML = topics.map(topic => `
+                    <div class="bg-gradient-to-br from-purple-50 to-purple-100 px-6 py-4 rounded-xl border-2 border-purple-300 flex items-center justify-between">
+                        <span class="text-purple-900 font-semibold">${topic.topic_name}</span>
+                        <button 
+                            onclick="deleteTopic(${topic.id})"
+                            class="text-red-600 hover:text-red-800 hover:bg-white p-2 rounded-full transition">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function addTopic(topicName) {
+            if (!currentUserId) {
+                alert('Please sign in first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/users/${currentUserId}/topics`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic_name: topicName })
+                });
+
+                if (response.ok) {
+                    loadTopics();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function deleteTopic(topicId) {
+            try {
+                await fetch(`${API_URL}/users/${currentUserId}/topics/${topicId}`, {
+                    method: 'DELETE'
+                });
+                loadTopics();
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        // Load digest
+        async function loadDigest() {
+            if (!currentUserId) return;
+
+            try {
+                const response = await fetch(`${API_URL}/users/${currentUserId}/summaries?limit=20`);
+                const summaries = await response.json();
+
+                const container = document.getElementById('digestSummaries');
+                if (summaries.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-16">
+                            <i class="fas fa-newspaper text-8xl text-gray-300 mb-6"></i>
+                            <p class="text-gray-500 text-xl mb-4">No news summaries yet</p>
+                            <p class="text-gray-400 mb-6">Click "Get Latest News" to fetch personalized news for your portfolio</p>
+                            <button onclick="refreshDigestNow()" class="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-full font-bold shadow-lg">
+                                <i class="fas fa-sync-alt mr-2"></i>Get Latest News
+                            </button>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Group by ticker
+                const byTicker = {};
+                summaries.forEach(s => {
+                    if (!byTicker[s.stock_ticker]) byTicker[s.stock_ticker] = [];
+                    byTicker[s.stock_ticker].push(s);
+                });
+
+                container.innerHTML = Object.entries(byTicker).map(([ticker, items]) => `
+                    <div class="bg-white rounded-2xl shadow-xl border-l-8 border-purple-500 p-8">
+                        <h3 class="text-4xl font-bold text-purple-600 mb-6 flex items-center gap-3">
+                            <i class="fas fa-chart-line"></i>${ticker}
+                        </h3>
+                        ${items.map(s => `
+                            <div class="mb-8 pb-8 border-b border-gray-200 last:border-0">
+                                <div class="flex gap-3 mb-4">
+                                    <span class="px-4 py-2 rounded-full text-sm font-bold ${getSentimentClass(s.sentiment)}">
+                                        ${getSentimentIcon(s.sentiment)} ${s.sentiment.toUpperCase()}
+                                    </span>
+                                    <span class="px-4 py-2 rounded-full text-sm font-bold ${getImpactClass(s.impact_level)}">
+                                        Impact: ${s.impact_level.toUpperCase()}
+                                    </span>
+                                    <span class="px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700">
+                                        <i class="fas fa-star text-yellow-500 mr-1"></i>${s.confidence_score}/10
+                                    </span>
+                                </div>
+                                <h4 class="font-bold text-xl mb-3 text-gray-800">${s.article_title}</h4>
+                                <div class="text-gray-700 mb-4 whitespace-pre-line leading-relaxed">${s.summary}</div>
+                                <div class="bg-gradient-to-r from-purple-50 to-blue-50 p-4 rounded-xl border-l-4 border-purple-400 mb-4">
+                                    <strong class="text-purple-900">💡 Why it matters:</strong> 
+                                    <span class="text-gray-800">${s.impact_explanation}</span>
+                                </div>
+                                <a href="${s.article_url}" target="_blank" class="inline-flex items-center gap-2 text-purple-600 hover:text-purple-800 font-semibold">
+                                    <i class="fas fa-external-link-alt"></i>Read Full Article
+                                </a>
+                            </div>
+                        `).join('')}
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function getSentimentClass(sentiment) {
+            const s = sentiment.toLowerCase();
+            if (s === 'bullish') return 'bg-green-100 text-green-800 border-2 border-green-300';
+            if (s === 'bearish') return 'bg-red-100 text-red-800 border-2 border-red-300';
+            return 'bg-gray-100 text-gray-800 border-2 border-gray-300';
+        }
+
+        function getSentimentIcon(sentiment) {
+            const s = sentiment.toLowerCase();
+            if (s === 'bullish') return '📈';
+            if (s === 'bearish') return '📉';
+            return '➡️';
+        }
+
+        function getImpactClass(impact) {
+            const i = impact.toLowerCase();
+            if (i === 'high') return 'bg-red-100 text-red-800 border-2 border-red-300';
+            if (i === 'medium') return 'bg-yellow-100 text-yellow-800 border-2 border-yellow-300';
+            return 'bg-blue-100 text-blue-800 border-2 border-blue-300';
+        }
+    </script>
+</body>
+</html>
