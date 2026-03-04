@@ -29,17 +29,17 @@ class RSSFetcher:
         else:
             feeds = RSS_FEEDS
         
-        # 🚀 Parallel fetching to reduce latency
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        # 🚀 Parallel fetching with MORE workers (10 instead of 5)
+        with ThreadPoolExecutor(max_workers=10) as executor:
             future_to_url = {executor.submit(self._fetch_single_feed, url): url for url in feeds}
             
             for future in as_completed(future_to_url):
                 url = future_to_url[future]
                 try:
-                    articles = future.result()
+                    articles = future.result(timeout=15)  # 15s timeout per feed
                     all_articles.extend(articles)
                 except Exception as e:
-                    print(f"❌ Error fetching {url}: {str(e)}")
+                    print(f"[RSS ERROR] {url}: {str(e)}")
         
         return all_articles
     

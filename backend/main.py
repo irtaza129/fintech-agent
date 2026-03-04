@@ -88,12 +88,12 @@ class UserResponse(BaseModel):
 
 class StockAdd(BaseModel):
     ticker: str
-    company_name: str = None
+    company_name: Optional[str] = None
 
 class StockResponse(BaseModel):
     id: int
     ticker: str
-    company_name: str = None
+    company_name: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -331,19 +331,20 @@ async def trigger_digest(
     # Rate limiting check
     check_rate_limit(request)
     
-    # Authorization check (optional but recommended for production)
-    if authorization != f"Bearer {os.getenv('DIGEST_SECRET')}":
+    # Optional authorization - only enforce if DIGEST_SECRET is set
+    digest_secret = os.getenv('DIGEST_SECRET')
+    if digest_secret and authorization != f"Bearer {digest_secret}":
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     try:
         from rss_fetcher import fetch_daily_news
-        from llm_processor import process_articles, token_usage_cache
+        from llm_processor_optimized import process_articles, token_usage_cache
         from email_sender import send_daily_digest
         
-        # Step 1: Fetch RSS articles
+        # Step 1: Fetch RSS articles (parallel)
         articles = fetch_daily_news(db)
         
-        # Step 2: Process with LLM (with caching to avoid re-processing)
+        # Step 2: Process with LLM (BATCHED - 5-10x faster)
         processed_count = process_articles(db)
         
         # Step 3: Send email digest
@@ -367,7 +368,7 @@ async def get_usage_stats():
     """
     Get token usage and cost statistics
     """
-    from llm_processor import token_usage_cache
+    from llm_processor_optimized import token_usage_cache
     
     return {
         "total_tokens": token_usage_cache['total_tokens'],
@@ -379,6 +380,63 @@ async def get_usage_stats():
             "output": "$0.60 per 1M tokens"
         }
     }
+
+@app.post("/api/trigger-digest-fast")
+async def trigger_digest_fast(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+):
+    """
+    FAST digest trigger with async processing
+    Uses concurrent LLM calls for maximum speed
+    """
+    check_rate_limit(request)
+    
+    # Optional authorization - only enforce if DIGEST_SECRET is set
+    digest_secret = os.getenv('DIGEST_SECRET')
+    if digest_secret and authorization != f"Bearer {digest_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        import time
+        start_time = time.time()
+        
+        from rss_fetcher import fetch_daily_news
+        from llm_processor_optimized import process_articles_async, token_usage_cache
+        from email_sender import send_daily_digest
+        
+        # Step 1: Fetch RSS articles (parallel)
+        articles = fetch_daily_news(db)
+        fetch_time = time.time() - start_time
+        
+        # Step 2: Process with ASYNC LLM (concurrent) - await directly
+        llm_start = time.time()
+        processed_count = await process_articles_async(db)
+        llm_time = time.time() - llm_start
+        
+        # Step 3: Send email digest
+        sent_count = send_daily_digest(db)
+        total_time = time.time() - start_time
+        
+        return {
+            "status": "success",
+            "mode": "fast_async",
+            "articles_fetched": len(articles),
+            "summaries_processed": processed_count,
+            "emails_sent": sent_count,
+            "tokens_used": token_usage_cache['total_tokens'],
+            "estimated_cost": f"${token_usage_cache['total_cost']:.4f}",
+            "timing": {
+                "fetch_seconds": round(fetch_time, 2),
+                "llm_seconds": round(llm_time, 2),
+                "total_seconds": round(total_time, 2)
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fast digest failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

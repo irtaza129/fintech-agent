@@ -298,20 +298,21 @@
             document.getElementById('loadingOverlay').classList.remove('hidden');
 
             try {
-                const response = await fetch(`${API_URL}/trigger-digest`, {
+                const response = await fetch(`${API_URL}/trigger-digest-fast`, {
                     method: 'POST'
                 });
 
                 const result = await response.json();
                 
                 if (response.ok) {
-                    // Show success and reload digest
+                    // Show success with timing info and reload digest
+                    const timing = result.timing ? `\n⏱️ Completed in ${result.timing.total_seconds}s` : '';
                     setTimeout(() => {
                         loadDigest();
                         document.getElementById('loadingOverlay').classList.add('hidden');
                         document.getElementById('digestBadge').classList.remove('hidden');
                         switchTab('digest');
-                        alert(`✅ Success!\n\n📰 Fetched: ${result.articles_fetched} articles\n🤖 Processed: ${result.summaries_processed} summaries\n📧 Emails sent: ${result.emails_sent}`);
+                        alert(`✅ Success!${timing}\n\n📰 Fetched: ${result.articles_fetched} articles\n🤖 Processed: ${result.summaries_processed} summaries\n📧 Emails sent: ${result.emails_sent}\n💰 Cost: ${result.estimated_cost}`);
                     }, 2000);
                 } else {
                     document.getElementById('loadingOverlay').classList.add('hidden');
@@ -358,14 +359,24 @@
 
                 if (response.ok) {
                     loadStocks();
+                    // Show success feedback
+                    const tickerEl = document.getElementById('customTicker');
+                    if (tickerEl) {
+                        tickerEl.style.borderColor = '#10b981';
+                        setTimeout(() => tickerEl.style.borderColor = '', 1000);
+                    }
                 } else {
                     const error = await response.json();
-                    if (error.detail !== 'Stock already in portfolio') {
+                    if (error.detail === 'Stock already in portfolio') {
+                        // Already exists - just refresh to show it
+                        loadStocks();
+                    } else {
                         alert(error.detail);
                     }
                 }
             } catch (error) {
                 console.error('Error:', error);
+                alert('Failed to add stock. Please try again.');
             }
         }
 

@@ -21,8 +21,17 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./fintech_agent.db")
 
 # Email Settings
 EMAIL_ENABLED = os.getenv("EMAIL_ENABLED", "true").lower() == "true"
+EMAIL_PROVIDER = os.getenv("EMAIL_PROVIDER", "resend")  # "resend", "sendpulse", "smtp"
 EMAIL_SENDER = os.getenv("EMAIL_SENDER", "")
+
+# Resend API
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+
+# SMTP (SendPulse or Gmail)
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp-pulse.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 
 # RSS Feeds
 RSS_FEEDS = [

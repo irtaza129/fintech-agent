@@ -1,22 +1,35 @@
 """
 Email Sender - Send daily digest emails to users
 """
+import smtplib
 import requests
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from typing import List, Dict
 from sqlalchemy.orm import Session
 
 from models import User, PortfolioStock, ProcessedSummary, SelectedTopic
 from config import (
-    EMAIL_ENABLED, EMAIL_SENDER, RESEND_API_KEY
+    EMAIL_ENABLED, EMAIL_PROVIDER, EMAIL_SENDER,
+    RESEND_API_KEY, SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD
 )
 
 class EmailDigestSender:
     def __init__(self):
         self.enabled = EMAIL_ENABLED
+        self.provider = EMAIL_PROVIDER
         self.sender = EMAIL_SENDER
-        self.api_key = RESEND_API_KEY
-        self.api_url = "https://api.resend.com/emails"
+        
+        # Resend config
+        self.resend_api_key = RESEND_API_KEY
+        self.resend_api_url = "https://api.resend.com/emails"
+        
+        # SMTP config (SendPulse, Gmail, etc.)
+        self.smtp_server = SMTP_SERVER
+        self.smtp_port = SMTP_PORT
+        self.smtp_username = SMTP_USERNAME
+        self.smtp_password = SMTP_PASSWORD
     
     def send_digest_to_user(self, user: User, db: Session) -> bool:
         """
@@ -240,11 +253,20 @@ class EmailDigestSender:
     
     def _send_email(self, recipient: str, subject: str, body: str):
         """
+        Send email via configured provider (Resend API or SMTP)
+        """
+        if self.provider == "resend":
+            self._send_via_resend(recipient, subject, body)
+        else:  # smtp, sendpulse, gmail
+            self._send_via_smtp(recipient, subject, body)
+    
+    def _send_via_resend(self, recipient: str, subject: str, body: str):
+        """
         Send email via Resend API
         """
         try:
             headers = {
-                "Authorization": f"Bearer {self.api_key}",
+                "Authorization": f"Bearer {self.resend_api_key}",
                 "Content-Type": "application/json"
             }
             
@@ -256,7 +278,7 @@ class EmailDigestSender:
             }
             
             response = requests.post(
-                self.api_url,
+                self.resend_api_url,
                 headers=headers,
                 json=payload
             )
@@ -265,7 +287,39 @@ class EmailDigestSender:
                 raise Exception(f"Resend API error: {response.status_code} - {response.text}")
             
         except Exception as e:
-            print(f"❌ Email Error: {str(e)}")
+            print(f"❌ Email Error (Resend): {str(e)}")
+            raise
+    
+    def _send_via_smtp(self, recipient: str, subject: str, body: str):
+        """
+        Send email via SMTP (SendPulse, Gmail, etc.)
+        """
+        try:
+            # Create message
+            message = MIMEMultipart('alternative')
+            message['Subject'] = subject
+            message['From'] = self.sender
+            message['To'] = recipient
+            
+            # Attach HTML body
+            html_part = MIMEText(body, 'html')
+            message.attach(html_part)
+            
+            # Connect to SMTP server and send
+            if self.smtp_port == 465:
+                # SSL
+                with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port) as server:
+                    server.login(self.smtp_username, self.smtp_password)
+                    server.send_message(message)
+            else:
+                # TLS (port 587)
+                with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                    server.starttls()
+                    server.login(self.smtp_username, self.smtp_password)
+                    server.send_message(message)
+            
+        except Exception as e:
+            print(f"❌ SMTP Error: {str(e)}")
             raise
 
 def send_daily_digest(db: Session) -> int:
