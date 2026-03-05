@@ -14,13 +14,26 @@ jobs:
     
     steps:
       - name: Trigger Digest Endpoint
+        env:
+          RENDER_URL: ${{ secrets.RENDER_APP_URL }}
+          AUTH_SECRET: ${{ secrets.DIGEST_SECRET }}
         run: |
-          curl -X POST "${{ secrets.RENDER_APP_URL }}/api/trigger-digest" \
+          if [ -z "$RENDER_URL" ]; then
+            echo "❌ ERROR: RENDER_APP_URL secret not set"
+            echo "Go to: Settings → Secrets and variables → Actions → New repository secret"
+            echo "Add: RENDER_APP_URL = https://your-app.onrender.com"
+            exit 1
+          fi
+          
+          echo "🚀 Triggering digest at: ${RENDER_URL}/api/trigger-digest-fast"
+          
+          curl -X POST "${RENDER_URL}/api/trigger-digest-fast" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.DIGEST_SECRET }}" \
+            -H "Authorization: Bearer ${AUTH_SECRET}" \
             --fail \
-            --silent \
-            --show-error
+            --show-error \
+            --max-time 180 \
+            -w "\n✅ Status: %{http_code}\n"
       
       - name: Check Status
         if: success()
