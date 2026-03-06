@@ -390,19 +390,15 @@ async def get_usage_stats():
 @app.post("/api/trigger-digest-fast")
 async def trigger_digest_fast(
     request: Request,
-    authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ):
     """
-    FAST digest trigger with async processing
+    FAST digest trigger with async processing (PUBLIC - no auth required)
     Uses concurrent LLM calls for maximum speed
     """
     check_rate_limit(request)
     
-    # Optional authorization - only enforce if DIGEST_SECRET is set
-    digest_secret = os.getenv('DIGEST_SECRET')
-    if digest_secret and authorization != f"Bearer {digest_secret}":
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    # No authorization required - this is for dashboard users
     
     try:
         import time

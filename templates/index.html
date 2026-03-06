@@ -229,6 +229,7 @@
         // Sign in - create or load user
         async function signIn() {
             const email = document.getElementById('userEmail').value.trim();
+            
             if (!email) {
                 alert('Please enter your email');
                 return;
