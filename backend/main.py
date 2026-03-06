@@ -130,6 +130,12 @@ async def startup_event():
     init_db()
     print("🚀 Fintech AI Agent API started!")
 
+# Health check for Render
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Render"""
+    return {"status": "ok"}
+
 # Frontend - Serve dashboard
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
