@@ -127,14 +127,18 @@ class SummaryResponse(BaseModel):
 # Startup event
 @app.on_event("startup")
 async def startup_event():
-    init_db()
+    try:
+        init_db()
+        print("✅ Database tables created successfully!")
+    except Exception as e:
+        print(f"⚠️ Database init warning: {e}")
     print("🚀 Fintech AI Agent API started!")
 
 # Health check for Render
 @app.get("/health")
 async def health_check():
     """Health check endpoint for Render"""
-    return {"status": "ok"}
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
 # Frontend - Serve dashboard
 @app.get("/", response_class=HTMLResponse)
@@ -398,27 +402,41 @@ async def trigger_digest_fast(
     """
     check_rate_limit(request)
     
-    # No authorization required - this is for dashboard users
-    
     try:
         import time
+        import traceback
         start_time = time.time()
         
+        # Check critical environment variables
+        openai_key = os.getenv('OPENAI_API_KEY')
+        if not openai_key:
+            raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set in environment")
+        
+        print("[STEP 1] Importing modules...")
         from rss_fetcher import fetch_daily_news
         from llm_processor_optimized import process_articles_async, token_usage_cache
-        from email_sender import send_daily_digest
         
-        # Step 1: Fetch RSS articles (parallel)
+        print("[STEP 2] Fetching RSS articles...")
         articles = fetch_daily_news(db)
         fetch_time = time.time() - start_time
+        print(f"[STEP 2] Fetched {len(articles)} articles in {fetch_time:.2f}s")
         
-        # Step 2: Process with ASYNC LLM (concurrent) - await directly
+        print("[STEP 3] Processing with LLM...")
         llm_start = time.time()
         processed_count = await process_articles_async(db)
         llm_time = time.time() - llm_start
+        print(f"[STEP 3] Processed {processed_count} summaries in {llm_time:.2f}s")
         
-        # Step 3: Send email digest
-        sent_count = send_daily_digest(db)
+        # Email is optional - don't fail if it errors
+        sent_count = 0
+        print("[STEP 4] Sending emails (optional)...")
+        try:
+            from email_sender import send_daily_digest
+            sent_count = send_daily_digest(db)
+            print(f"[STEP 4] Sent {sent_count} emails")
+        except Exception as email_error:
+            print(f"[EMAIL WARNING] Email failed: {email_error}")
+        
         total_time = time.time() - start_time
         
         return {
@@ -437,8 +455,17 @@ async def trigger_digest_fast(
             "timestamp": datetime.now().isoformat()
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fast digest failed: {str(e)}")
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[ERROR] Fast digest failed:")
+        print(error_trace)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Fast digest failed: {str(e)} | Type: {type(e).__name__}"
+        )
 
 if __name__ == "__main__":
     import uvicorn
