@@ -170,23 +170,24 @@ Return ONLY valid JSON with ALL tickers as keys. No additional text."""
 
     def _call_llm(self, prompt: str) -> str:
         """
-        Call OpenAI API (synchronous)
+        Call OpenAI API (synchronous) - uses chat.completions for compatibility
         """
         try:
-            response = self.client.responses.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
-                input=[
+                messages=[
                     {"role": "system", "content": "You are a financial analyst. Always respond with valid JSON only. No markdown, no code blocks, no extra text."},
                     {"role": "user", "content": prompt}
                 ],
-                max_output_tokens=LLM_MAX_TOKENS
+                max_tokens=LLM_MAX_TOKENS,
+                temperature=LLM_TEMPERATURE
             )
 
             # Track token usage
-            if hasattr(response, 'usage'):
+            if hasattr(response, 'usage') and response.usage:
                 tokens_used = getattr(response.usage, 'total_tokens', 0)
-                input_tokens = getattr(response.usage, 'input_tokens', 0)
-                output_tokens = getattr(response.usage, 'output_tokens', 0)
+                input_tokens = getattr(response.usage, 'prompt_tokens', 0)
+                output_tokens = getattr(response.usage, 'completion_tokens', 0)
 
                 input_cost = input_tokens * 0.15 / 1_000_000
                 output_cost = output_tokens * 0.60 / 1_000_000
@@ -197,7 +198,7 @@ Return ONLY valid JSON with ALL tickers as keys. No additional text."""
 
                 logger.info(f"[TOKENS] {tokens_used} | Cost: ${total_cost:.4f} | Total: ${token_usage_cache['total_cost']:.4f}")
 
-            return response.output_text
+            return response.choices[0].message.content
 
         except Exception as e:
             logger.error(f"[API ERROR] {str(e)}")
@@ -208,20 +209,21 @@ Return ONLY valid JSON with ALL tickers as keys. No additional text."""
         ASYNC LLM call for concurrent processing
         """
         try:
-            response = await self.async_client.responses.create(
+            response = await self.async_client.chat.completions.create(
                 model=self.model,
-                input=[
+                messages=[
                     {"role": "system", "content": "You are a financial analyst. Always respond with valid JSON only. No markdown, no code blocks, no extra text."},
                     {"role": "user", "content": prompt}
                 ],
-                max_output_tokens=LLM_MAX_TOKENS
+                max_tokens=LLM_MAX_TOKENS,
+                temperature=LLM_TEMPERATURE
             )
 
-            if hasattr(response, 'usage'):
+            if hasattr(response, 'usage') and response.usage:
                 tokens_used = getattr(response.usage, 'total_tokens', 0)
                 token_usage_cache['total_tokens'] += tokens_used
 
-            return response.output_text
+            return response.choices[0].message.content
 
         except Exception as e:
             logger.error(f"[ASYNC API ERROR] {str(e)}")

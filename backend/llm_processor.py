@@ -149,13 +149,13 @@ Return ONLY valid JSON, no additional text."""
     
     def _call_llm(self, prompt: str) -> str:
         """
-        Call OpenAI API using Responses API (recommended for GPT-5 models)
+        Call OpenAI API using chat.completions (compatible with all versions)
         Tracks token usage and costs
         """
         try:
-            response = self.client.responses.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
-                input=[
+                messages=[
                     {
                         "role": "system",
                         "content": "You are a financial news analyst. Always respond with valid JSON."
@@ -165,16 +165,16 @@ Return ONLY valid JSON, no additional text."""
                         "content": prompt
                     }
                 ],
-                max_output_tokens=LLM_MAX_TOKENS
+                max_tokens=LLM_MAX_TOKENS
             )
             
             # Track token usage
-            if hasattr(response, 'usage'):
-                tokens_used = response.usage.total_tokens if hasattr(response.usage, 'total_tokens') else 0
+            if hasattr(response, 'usage') and response.usage:
+                tokens_used = getattr(response.usage, 'total_tokens', 0)
                 
                 # GPT-4o-mini pricing: $0.15/1M input, $0.60/1M output
-                input_cost = (response.usage.input_tokens if hasattr(response.usage, 'input_tokens') else 0) * 0.15 / 1_000_000
-                output_cost = (response.usage.output_tokens if hasattr(response.usage, 'output_tokens') else 0) * 0.60 / 1_000_000
+                input_cost = getattr(response.usage, 'prompt_tokens', 0) * 0.15 / 1_000_000
+                output_cost = getattr(response.usage, 'completion_tokens', 0) * 0.60 / 1_000_000
                 total_cost = input_cost + output_cost
                 
                 # Update global cache
@@ -183,7 +183,7 @@ Return ONLY valid JSON, no additional text."""
                 
                 logger.info(f"💰 Tokens: {tokens_used} | Cost: ${total_cost:.4f} | Total today: ${token_usage_cache['total_cost']:.4f}")
 
-            return response.output_text
+            return response.choices[0].message.content
 
         except Exception as e:
             logger.error(f"❌ OpenAI API Error: {str(e)}")
