@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from models import RawArticle, ProcessedSummary
 from config import (
-    LLM_MODEL, LLM_TEMPERATURE, LLM_MAX_TOKENS,
+    LLM_MODEL, LLM_MAX_TOKENS,
     OPENAI_API_KEY
 )
 
@@ -179,8 +179,7 @@ Return ONLY valid JSON with ALL tickers as keys. No additional text."""
                     {"role": "system", "content": "You are a financial analyst. Always respond with valid JSON only. No markdown, no code blocks, no extra text."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=LLM_MAX_TOKENS,
-                temperature=LLM_TEMPERATURE
+                max_completion_tokens=LLM_MAX_TOKENS
             )
 
             # Track token usage
@@ -215,8 +214,7 @@ Return ONLY valid JSON with ALL tickers as keys. No additional text."""
                     {"role": "system", "content": "You are a financial analyst. Always respond with valid JSON only. No markdown, no code blocks, no extra text."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=LLM_MAX_TOKENS,
-                temperature=LLM_TEMPERATURE
+                max_completion_tokens=LLM_MAX_TOKENS
             )
 
             if hasattr(response, 'usage') and response.usage:

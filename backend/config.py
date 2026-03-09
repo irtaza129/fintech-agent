@@ -12,8 +12,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # LLM Settings
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")  # "openai" or "groq"
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")  # or "mistral-7b" for Groq
-LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.3"))
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-5-mini")  # or "mistral-7b" for Groq
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1000"))
 
 # Database
