@@ -179,7 +179,7 @@ Return ONLY valid JSON with ALL tickers as keys. No additional text."""
                     {"role": "system", "content": "You are a financial analyst. Always respond with valid JSON only. No markdown, no code blocks, no extra text."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=LLM_MAX_TOKENS
+                max_completion_tokens=LLM_MAX_TOKENS
             )
 
             # Track token usage
@@ -214,7 +214,7 @@ Return ONLY valid JSON with ALL tickers as keys. No additional text."""
                     {"role": "system", "content": "You are a financial analyst. Always respond with valid JSON only. No markdown, no code blocks, no extra text."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=LLM_MAX_TOKENS
+                max_completion_tokens=LLM_MAX_TOKENS
             )
 
             if hasattr(response, 'usage') and response.usage:
