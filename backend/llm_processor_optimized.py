@@ -133,53 +133,69 @@ class LLMProcessor:
 
     def _build_batch_prompt(self, article: RawArticle, tickers: List[str]) -> str:
         """
-        Build prompt for MULTIPLE tickers in ONE call
+        Build a clean prompt for multiple tickers.
+        Uses explicit field descriptions per ticker instead of '...' placeholders
+        that the model may copy verbatim.
         """
         topics = article.topics_detected.split(',') if article.topics_detected else []
-        topics_str = ', '.join(topics) if topics else 'None'
+        topics_str = ', '.join(t.strip() for t in topics) if topics else 'None'
         tickers_str = ', '.join(tickers)
 
-        example_json = f'{{\n    "{tickers[0]}": {{\n        "summary": "5-7 bullet points for {tickers[0]}",\n        "sentiment": "bullish|bearish|neutral",\n        "impact_level": "low|medium|high",\n        "impact_explanation": "2-3 sentences for {tickers[0]}",\n        "confidence_score": 7\n    }}'
+        # Build a concrete schema block for EACH ticker (no '...' placeholders)
+        ticker_schema_lines = []
+        for t in tickers:
+            ticker_schema_lines.append(
+                f'  "{t}": {{\n'
+                f'    "summary": "3-5 concise bullet points about this article relevant to {t}",\n'
+                f'    "sentiment": "bullish or bearish or neutral",\n'
+                f'    "impact_level": "low or medium or high",\n'
+                f'    "impact_explanation": "2-3 sentences on why this matters for {t}",\n'
+                f'    "confidence_score": 7\n'
+                f'  }}'
+            )
+        schema_block = '{\n' + ',\n'.join(ticker_schema_lines) + '\n}'
 
-        if len(tickers) > 1:
-            for t in tickers[1:]:
-                example_json += f',\n    "{t}": {{\n        "summary": "...",\n        "sentiment": "...",\n        "impact_level": "...",\n        "impact_explanation": "...",\n        "confidence_score": ...\n    }}'
+        prompt = f"""You are a financial news analyst. Analyze the article below for the specified stocks and return a JSON object.
 
-        example_json += '\n}'
+ARTICLE TITLE: {article.title}
 
-        prompt = f"""You are a financial news analyst. Analyze this article for MULTIPLE stocks.
+ARTICLE CONTENT:
+{article.content[:1800]}
 
-**Article Title:** {article.title}
+TOPICS DETECTED: {topics_str}
 
-**Article Content:**
-{article.content[:2000]}
+STOCKS TO ANALYZE: {tickers_str}
 
-**Topics Detected:** {topics_str}
+INSTRUCTIONS:
+- Return a single JSON object where each key is a ticker symbol.
+- For every ticker in [{tickers_str}], include an entry with these exact fields:
+  - "summary": 3-5 bullet points (use \\n between bullets)
+  - "sentiment": exactly one of "bullish", "bearish", or "neutral"
+  - "impact_level": exactly one of "low", "medium", or "high"
+  - "impact_explanation": 2-3 sentences
+  - "confidence_score": integer 1-10
+- Do NOT include any text outside the JSON object.
+- Do NOT use markdown formatting or code fences.
 
-**Stocks to Analyze:** {tickers_str}
-
-**Task:**
-For EACH stock ticker ({tickers_str}), provide analysis in the following JSON format.
-
-**Return Format (JSON object with ticker keys):**
-{example_json}
-
-Return ONLY valid JSON with ALL tickers as keys. No additional text."""
+EXPECTED JSON STRUCTURE:
+{schema_block}"""
 
         return prompt
 
     def _call_llm(self, prompt: str) -> str:
         """
-        Call OpenAI API (synchronous) - uses chat.completions for compatibility
+        Call OpenAI API (synchronous).
+        Uses response_format=json_object so GPT-5 mini always returns valid JSON.
         """
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a financial analyst. Always respond with valid JSON only. No markdown, no code blocks, no extra text."},
+                    {"role": "system", "content": "You are a financial analyst. You must respond with a valid JSON object only. No markdown, no code fences, no extra text."},
                     {"role": "user", "content": prompt}
                 ],
-                max_completion_tokens=LLM_MAX_TOKENS
+                max_completion_tokens=LLM_MAX_TOKENS,
+                response_format={"type": "json_object"}
             )
 
             # Track token usage
@@ -188,8 +204,9 @@ Return ONLY valid JSON with ALL tickers as keys. No additional text."""
                 input_tokens = getattr(response.usage, 'prompt_tokens', 0)
                 output_tokens = getattr(response.usage, 'completion_tokens', 0)
 
-                input_cost = input_tokens * 0.15 / 1_000_000
-                output_cost = output_tokens * 0.60 / 1_000_000
+                # GPT-5 mini pricing: $0.25/1M input, $2.00/1M output
+                input_cost = input_tokens * 0.25 / 1_000_000
+                output_cost = output_tokens * 2.00 / 1_000_000
                 total_cost = input_cost + output_cost
 
                 token_usage_cache['total_tokens'] += tokens_used
@@ -205,16 +222,17 @@ Return ONLY valid JSON with ALL tickers as keys. No additional text."""
 
     async def _call_llm_async(self, prompt: str) -> str:
         """
-        ASYNC LLM call for concurrent processing
+        ASYNC LLM call. Uses response_format=json_object for guaranteed valid JSON.
         """
         try:
             response = await self.async_client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a financial analyst. Always respond with valid JSON only. No markdown, no code blocks, no extra text."},
+                    {"role": "system", "content": "You are a financial analyst. You must respond with a valid JSON object only. No markdown, no code fences, no extra text."},
                     {"role": "user", "content": prompt}
                 ],
-                max_completion_tokens=LLM_MAX_TOKENS
+                max_completion_tokens=LLM_MAX_TOKENS,
+                response_format={"type": "json_object"}
             )
 
             if hasattr(response, 'usage') and response.usage:
@@ -229,70 +247,96 @@ Return ONLY valid JSON with ALL tickers as keys. No additional text."""
 
     def _parse_batch_response(self, response: str, tickers: List[str]) -> Dict[str, Dict]:
         """
-        FIX 2: Robust JSON parser - tries direct parse first, then falls back to extraction
+        Parse the JSON response from the LLM.
+        With response_format=json_object, the response should always be valid JSON.
+        Keeps multi-layer fallback for safety.
         """
         results = {}
+        logger.info(f"[LLM-RESPONSE] {response[:600]}")
 
-        # Strip markdown fences if present
+        # Strip markdown fences just in case
         clean = response.strip()
-        clean = re.sub(r'^```(?:json)?\s*', '', clean)
-        clean = re.sub(r'\s*```$', '', clean)
+        clean = re.sub(r'^```(?:json)?\s*', '', clean, flags=re.MULTILINE)
+        clean = re.sub(r'\s*```$', '', clean, flags=re.MULTILINE)
         clean = clean.strip()
 
-        # Attempt 1: Direct parse (handles clean responses)
+        # Attempt 1: Direct parse
         parsed = None
         try:
             parsed = json.loads(clean)
         except json.JSONDecodeError:
             pass
 
-        # Attempt 2: Extract outermost { } using rfind (handles leading/trailing garbage)
+        # Attempt 2: Extract outermost { }
         if parsed is None:
             start = clean.find('{')
             end = clean.rfind('}')
-            if start != -1 and end != -1 and end > start:
+            if start != -1 and end > start:
                 try:
                     parsed = json.loads(clean[start:end + 1])
                 except json.JSONDecodeError:
                     pass
 
-        # Attempt 3: Try to balance unmatched braces (handles truncated responses)
-        if parsed is None and start != -1:
-            json_str = clean[start:]
-            open_count = json_str.count('{')
-            close_count = json_str.count('}')
-            if open_count > close_count:
-                json_str += '}' * (open_count - close_count)
+        # Attempt 3: Balance unmatched braces (truncated response)
+        if parsed is None and clean.find('{') != -1:
+            json_str = clean[clean.find('{'):]
+            diff = json_str.count('{') - json_str.count('}')
+            if diff > 0:
+                json_str += '}' * diff
             try:
                 parsed = json.loads(json_str)
             except json.JSONDecodeError:
-                logger.error(f"[PARSE] All attempts failed. Raw response: {response[:300]}...")
+                logger.error(f"[PARSE] All 3 attempts failed. Full response: {response}")
                 return results
 
-        if parsed is None:
-            logger.error(f"[PARSE] Could not extract JSON from response: {response[:200]}...")
+        if not parsed:
+            logger.error(f"[PARSE] Could not parse response. Full response: {response}")
             return results
 
-        # Extract per-ticker data
+        # Extract and validate per-ticker data
+        required_fields = ['summary', 'sentiment', 'impact_level', 'impact_explanation', 'confidence_score']
+        valid_sentiments = {'bullish', 'bearish', 'neutral'}
+        valid_impacts = {'low', 'medium', 'high'}
+
         for ticker in tickers:
             if ticker not in parsed:
-                logger.warning(f"[PARSE] Ticker {ticker} not in response")
+                logger.warning(f"[PARSE] Ticker {ticker} missing from response keys: {list(parsed.keys())}")
                 continue
 
-            ticker_data = parsed[ticker]
-            required = ['summary', 'sentiment', 'impact_level', 'impact_explanation', 'confidence_score']
+            data = parsed[ticker]
+            if not isinstance(data, dict):
+                logger.warning(f"[PARSE] Ticker {ticker} value is not a dict: {type(data)}")
+                continue
 
-            if not all(key in ticker_data for key in required):
-                logger.warning(f"[PARSE] Missing fields for {ticker}: {list(ticker_data.keys())}")
+            if not all(k in data for k in required_fields):
+                missing = [k for k in required_fields if k not in data]
+                logger.warning(f"[PARSE] Ticker {ticker} missing fields: {missing}")
                 continue
 
             # Normalize list values to strings
-            if isinstance(ticker_data.get('summary'), list):
-                ticker_data['summary'] = '\n'.join(ticker_data['summary'])
-            if isinstance(ticker_data.get('impact_explanation'), list):
-                ticker_data['impact_explanation'] = ' '.join(ticker_data['impact_explanation'])
+            if isinstance(data.get('summary'), list):
+                data['summary'] = '\n'.join(str(x) for x in data['summary'])
+            if isinstance(data.get('impact_explanation'), list):
+                data['impact_explanation'] = ' '.join(str(x) for x in data['impact_explanation'])
 
-            results[ticker] = ticker_data
+            # Coerce sentinel/invalid values to safe defaults
+            sentiment = str(data.get('sentiment', '')).lower().strip()
+            if sentiment not in valid_sentiments:
+                logger.warning(f"[PARSE] {ticker}: invalid sentiment '{sentiment}', defaulting to neutral")
+                data['sentiment'] = 'neutral'
+
+            impact = str(data.get('impact_level', '')).lower().strip()
+            if impact not in valid_impacts:
+                logger.warning(f"[PARSE] {ticker}: invalid impact_level '{impact}', defaulting to low")
+                data['impact_level'] = 'low'
+
+            try:
+                data['confidence_score'] = float(data['confidence_score'])
+            except (ValueError, TypeError):
+                data['confidence_score'] = 5.0
+
+            results[ticker] = data
+            logger.info(f"[PARSE-OK] {ticker}: sentiment={data['sentiment']}, impact={data['impact_level']}, confidence={data['confidence_score']}")
 
         return results
 
