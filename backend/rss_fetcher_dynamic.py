@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from models import RawArticle, PortfolioStock, SelectedTopic
 from config import RSS_FEEDS
+from ticker_extractor import extract_tickers
 
 class RSSFetcher:
     def __init__(self, db: Session):
@@ -182,22 +183,16 @@ class RSSFetcher:
     
     def _detect_tickers(self, article: Dict, tickers: set, company_names: Dict) -> List[str]:
         """
-        Detect stock tickers in article title and content
+        Detect stock tickers in article title and content.
+        Uses the multi-strategy TickerExtractor for:
+          - $AAPL cashtag regex
+          - Company name → ticker mapping (500+ companies)
+          - Parenthesized tickers: Apple (AAPL), (NASDAQ: TSLA)
+          - Bare ticker validation with false-positive filtering
+        Portfolio tickers are boosted so user's stocks are always prioritized.
         """
-        detected = set()
-        text = f"{article['title']} {article['content']}".upper()
-        
-        # Check for ticker symbols (e.g., $TSLA, TSLA)
-        for ticker in tickers:
-            pattern = r'(\$' + ticker + r'|\b' + ticker + r'\b)'
-            if re.search(pattern, text):
-                detected.add(ticker)
-        
-        # Check for company names with word boundaries (safer matching)
-        text_lower = text.lower()
-        for company, ticker in company_names.items():
-            if re.search(r'\b' + re.escape(company) + r'\b', text_lower):
-                detected.add(ticker)
+        text = f"{article['title']} {article['content']}"
+        detected = extract_tickers(text, portfolio_tickers=tickers)
         
         return list(detected)
     
