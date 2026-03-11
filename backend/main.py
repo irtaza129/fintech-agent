@@ -175,10 +175,14 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/users/by-email/{email}", response_model=UserResponse)
 def get_user_by_email(email: str, db: Session = Depends(get_db)):
-    """Get user by email for login"""
+    """Get user by email for login - auto-creates if doesn't exist"""
     user = db.query(User).filter(User.email == email).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        # Auto-create user on first access (handles ephemeral DB on Render)
+        user = User(email=email)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
     return user
 
 # Portfolio stock endpoints

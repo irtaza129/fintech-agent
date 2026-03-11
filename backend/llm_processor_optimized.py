@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from models import RawArticle, ProcessedSummary
 from config import (
-    LLM_MODEL, LLM_MAX_TOKENS,
+    LLM_MODEL,
     OPENAI_API_KEY
 )
 
@@ -55,81 +55,172 @@ class LLMProcessor:
 
     def process_article_batch(self, article: RawArticle, tickers: List[str], db: Session) -> List[ProcessedSummary]:
         """
-        OPTIMIZED: Process ONE article for MULTIPLE tickers in a SINGLE LLM call
-        Returns list of ProcessedSummary objects
+        Process ONE article for MULTIPLE tickers.
+        Calls the LLM once per ticker (avoids truncation / None content from large batches).
+        Uses cache to skip already-processed pairs.
         """
         summaries = []
-
-        # Filter out already processed (article_id, ticker) pairs
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        tickers_to_process = []
 
         for ticker in tickers:
-            # Check in-memory run cache first (avoid DB query)
+            # 1. Check in-memory run cache first
             cache_key = (article.id, ticker)
             if cache_key in self.run_cache:
-                logger.info(f"[CACHE-MEM] {article.title[:30]}... | {ticker} (in-memory)")
+                logger.info(f"[CACHE-MEM] {article.title[:30]}... | {ticker}")
                 summaries.append(self.run_cache[cache_key])
                 continue
 
-            # Fallback to DB query
+            # 2. Check DB cache
             existing = db.query(ProcessedSummary).filter(
                 ProcessedSummary.article_id == article.id,
                 ProcessedSummary.stock_ticker == ticker,
                 ProcessedSummary.created_at >= today_start
             ).first()
-
             if existing:
-                logger.info(f"[CACHE-DB] {article.title[:30]}... | {ticker} (cached)")
+                logger.info(f"[CACHE-DB] {article.title[:30]}... | {ticker}")
                 summaries.append(existing)
-                self.run_cache[cache_key] = existing  # Promote to run cache
-            else:
-                tickers_to_process.append(ticker)
+                self.run_cache[cache_key] = existing
+                continue
 
-        if not tickers_to_process:
-            logger.info(f"[SKIP-LLM] All {len(tickers)} tickers cached, skipping LLM call")
-            return summaries  # All cached - NO LLM CALL
+            # 3. Single-ticker LLM call
+            try:
+                prompt = self._build_single_prompt(article, ticker)
+                raw = self._call_llm(prompt)
 
-        try:
-            # BATCH: Single LLM call for all tickers
-            prompt = self._build_batch_prompt(article, tickers_to_process)
-            response = self._call_llm(prompt)
-            parsed_results = self._parse_batch_response(response, tickers_to_process)
+                if not raw or not raw.strip():
+                    logger.error(f"[FAIL] Empty LLM response for {ticker} | {article.title[:40]}")
+                    continue
 
-            # BATCH DB COMMIT: Create all summaries first, commit once
-            new_summaries = []
-            for ticker in tickers_to_process:
-                parsed = parsed_results.get(ticker, {})
-                if parsed:
-                    summary = ProcessedSummary(
-                        article_id=article.id,
-                        stock_ticker=ticker,
-                        summary=parsed.get('summary', ''),
-                        sentiment=parsed.get('sentiment', 'neutral'),
-                        impact_level=parsed.get('impact_level', 'low'),
-                        impact_explanation=parsed.get('impact_explanation', ''),
-                        confidence_score=parsed.get('confidence_score', 5.0)
-                    )
-                    db.add(summary)
-                    new_summaries.append(summary)
-                    logger.info(f"[OK] {article.title[:40]}... | {ticker} | {parsed.get('sentiment')} | {parsed.get('impact_level')}")
-                else:
-                    logger.error(f"[FAIL] No result for {ticker} in article: {article.title[:40]}")
+                parsed = self._parse_single_response(raw, ticker)
+                if not parsed:
+                    logger.error(f"[FAIL] Parse failed for {ticker} | {article.title[:40]}")
+                    continue
 
-            # Single commit for all summaries
-            if new_summaries:
+                summary = ProcessedSummary(
+                    article_id=article.id,
+                    stock_ticker=ticker,
+                    summary=parsed.get('summary', ''),
+                    sentiment=parsed.get('sentiment', 'neutral'),
+                    impact_level=parsed.get('impact_level', 'low'),
+                    impact_explanation=parsed.get('impact_explanation', ''),
+                    confidence_score=parsed.get('confidence_score', 5.0)
+                )
+                db.add(summary)
                 db.commit()
-                for s in new_summaries:
-                    db.refresh(s)
-                    cache_key = (s.article_id, s.stock_ticker)
-                    self.run_cache[cache_key] = s
-                summaries.extend(new_summaries)
+                db.refresh(summary)
+                self.run_cache[cache_key] = summary
+                summaries.append(summary)
+                logger.info(f"[OK] {article.title[:40]}... | {ticker} | {parsed.get('sentiment')} | {parsed.get('impact_level')}")
 
-        except Exception as e:
-            logger.error(f"[ERROR] Batch processing failed: {str(e)}")
-            db.rollback()
+            except Exception as e:
+                logger.error(f"[ERROR] {ticker} | {article.title[:40]} | {str(e)}")
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
 
         return summaries
+
+    def _build_single_prompt(self, article: RawArticle, ticker: str) -> str:
+        """
+        Build a compact single-ticker prompt.
+        Keeps content short to avoid reasoning-model truncation.
+        """
+        topics = article.topics_detected.split(',') if article.topics_detected else []
+        topics_str = ', '.join(t.strip() for t in topics) if topics else 'None'
+        # Limit content to 1200 chars to keep total tokens well under limit
+        content_preview = (article.content or '')[:1200]
+
+        return f"""Analyze this financial news article for stock ticker {ticker}.
+
+TITLE: {article.title}
+CONTENT: {content_preview}
+TOPICS: {topics_str}
+
+Respond with a JSON object containing exactly these fields:
+{{
+  "summary": "3-5 concise bullet points about this article's relevance to {ticker}",
+  "sentiment": "bullish or bearish or neutral",
+  "impact_level": "low or medium or high",
+  "impact_explanation": "2-3 sentences on why this matters for {ticker}",
+  "confidence_score": 7
+}}
+
+Rules: respond ONLY with the JSON object, no extra text, no code fences."""
+
+    def _parse_single_response(self, response: str, ticker: str) -> Optional[Dict]:
+        """
+        Parse a single-ticker JSON response. Returns the dict or None on failure.
+        """
+        logger.info(f"[LLM-RESPONSE] {response[:400]}")
+
+        clean = response.strip()
+        # Strip markdown fences
+        clean = re.sub(r'^```(?:json)?\s*', '', clean, flags=re.MULTILINE)
+        clean = re.sub(r'\s*```$', '', clean, flags=re.MULTILINE)
+        clean = clean.strip()
+
+        parsed = None
+        # Attempt 1: direct parse
+        try:
+            parsed = json.loads(clean)
+        except json.JSONDecodeError:
+            pass
+
+        # Attempt 2: extract { }
+        if parsed is None:
+            start, end = clean.find('{'), clean.rfind('}')
+            if start != -1 and end > start:
+                try:
+                    parsed = json.loads(clean[start:end + 1])
+                except json.JSONDecodeError:
+                    pass
+
+        # Attempt 3: balance braces
+        if parsed is None and clean.find('{') != -1:
+            fragment = clean[clean.find('{'):]
+            diff = fragment.count('{') - fragment.count('}')
+            if diff > 0:
+                fragment += '}' * diff
+            try:
+                parsed = json.loads(fragment)
+            except json.JSONDecodeError:
+                pass
+
+        if not parsed:
+            logger.error(f"[PARSE-FAIL] {ticker} — could not parse. Response: {response}")
+            return None
+
+        # If the LLM wrapped under a ticker key, unwrap it
+        if ticker in parsed and isinstance(parsed[ticker], dict):
+            parsed = parsed[ticker]
+
+        required = ['summary', 'sentiment', 'impact_level', 'impact_explanation', 'confidence_score']
+        if not all(k in parsed for k in required):
+            missing = [k for k in required if k not in parsed]
+            logger.error(f"[PARSE-FAIL] {ticker} missing fields: {missing}")
+            return None
+
+        # Normalize lists to strings
+        if isinstance(parsed.get('summary'), list):
+            parsed['summary'] = '\n'.join(str(x) for x in parsed['summary'])
+        if isinstance(parsed.get('impact_explanation'), list):
+            parsed['impact_explanation'] = ' '.join(str(x) for x in parsed['impact_explanation'])
+
+        # Coerce enum fields
+        sentiment = str(parsed.get('sentiment', '')).lower().strip()
+        parsed['sentiment'] = sentiment if sentiment in {'bullish', 'bearish', 'neutral'} else 'neutral'
+
+        impact = str(parsed.get('impact_level', '')).lower().strip()
+        parsed['impact_level'] = impact if impact in {'low', 'medium', 'high'} else 'low'
+
+        try:
+            parsed['confidence_score'] = float(parsed['confidence_score'])
+        except (ValueError, TypeError):
+            parsed['confidence_score'] = 5.0
+
+        logger.info(f"[PARSE-OK] {ticker}: sentiment={parsed['sentiment']}, impact={parsed['impact_level']}")
+        return parsed
 
     def _build_batch_prompt(self, article: RawArticle, tickers: List[str]) -> str:
         """
@@ -194,7 +285,6 @@ EXPECTED JSON STRUCTURE:
                     {"role": "system", "content": "You are a financial analyst. You must respond with a valid JSON object only. No markdown, no code fences, no extra text."},
                     {"role": "user", "content": prompt}
                 ],
-                max_completion_tokens=LLM_MAX_TOKENS,
                 response_format={"type": "json_object"}
             )
 
@@ -214,7 +304,16 @@ EXPECTED JSON STRUCTURE:
 
                 logger.info(f"[TOKENS] {tokens_used} | Cost: ${total_cost:.4f} | Total: ${token_usage_cache['total_cost']:.4f}")
 
-            return response.choices[0].message.content
+            choice = response.choices[0]
+            finish_reason = getattr(choice, 'finish_reason', 'unknown')
+            content = choice.message.content
+            refusal = getattr(choice.message, 'refusal', None)
+
+            if content is None:
+                logger.warning(f"[LLM] content=None, finish_reason={finish_reason}, refusal={refusal}")
+                return ""
+
+            return content
 
         except Exception as e:
             logger.error(f"[API ERROR] {str(e)}")
@@ -231,7 +330,6 @@ EXPECTED JSON STRUCTURE:
                     {"role": "system", "content": "You are a financial analyst. You must respond with a valid JSON object only. No markdown, no code fences, no extra text."},
                     {"role": "user", "content": prompt}
                 ],
-                max_completion_tokens=LLM_MAX_TOKENS,
                 response_format={"type": "json_object"}
             )
 
@@ -239,7 +337,14 @@ EXPECTED JSON STRUCTURE:
                 tokens_used = getattr(response.usage, 'total_tokens', 0)
                 token_usage_cache['total_tokens'] += tokens_used
 
-            return response.choices[0].message.content
+            choice = response.choices[0]
+            content = choice.message.content
+            if content is None:
+                refusal = getattr(choice.message, 'refusal', None)
+                logger.warning(f"[ASYNC LLM] content=None, finish_reason={choice.finish_reason}, refusal={refusal}")
+                return ""
+
+            return content
 
         except Exception as e:
             logger.error(f"[ASYNC API ERROR] {str(e)}")

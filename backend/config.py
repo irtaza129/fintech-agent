@@ -13,7 +13,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 # LLM Settings
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")  # "openai" or "groq"
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-5-mini")  # GPT-5 mini - fast, cost-efficient
-LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "2000"))  # Increased for multi-ticker batch responses
 
 # Database
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./fintech_agent.db")
