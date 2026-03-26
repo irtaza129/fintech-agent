@@ -145,7 +145,7 @@ async def health_check():
 @app.head("/")
 async def dashboard(request: Request):
     """Serve the main dashboard"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="index.html")
 
 # API Health check
 @app.get("/api/health")
