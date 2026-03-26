@@ -4,7 +4,7 @@ Database setup and session management
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from config import DATABASE_URL
+from .config import DATABASE_URL
 
 # Create SQLAlchemy engine
 engine = create_engine(
@@ -32,6 +32,6 @@ def init_db():
     """
     Initialize database tables
     """
-    from models import User, PortfolioStock, SelectedTopic, RawArticle, ProcessedSummary
+    from .models import User, PortfolioStock, SelectedTopic, RawArticle, ProcessedSummary
     Base.metadata.create_all(bind=engine)
     print("✅ Database tables created successfully!")

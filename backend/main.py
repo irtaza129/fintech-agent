@@ -13,9 +13,9 @@ from datetime import datetime, timedelta
 import os
 from collections import defaultdict
 
-from database import get_db, init_db
-from models import User, PortfolioStock, SelectedTopic, RawArticle, ProcessedSummary
-from config import API_HOST, API_PORT, CORS_ORIGINS, AVAILABLE_TOPICS
+from .database import get_db, init_db
+from .models import User, PortfolioStock, SelectedTopic, RawArticle, ProcessedSummary
+from .config import API_HOST, API_PORT, CORS_ORIGINS, AVAILABLE_TOPICS
 
 # Rate limiting: Track requests per IP
 rate_limit_cache = defaultdict(list)
@@ -142,6 +142,7 @@ async def health_check():
 
 # Frontend - Serve dashboard
 @app.get("/", response_class=HTMLResponse)
+@app.head("/")
 async def dashboard(request: Request):
     """Serve the main dashboard"""
     return templates.TemplateResponse("index.html", {"request": request})
@@ -351,9 +352,9 @@ async def trigger_digest(
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     try:
-        from rss_fetcher import fetch_daily_news
-        from llm_processor_optimized import process_articles, token_usage_cache
-        from email_sender import send_daily_digest
+        from .rss_fetcher import fetch_daily_news
+        from .llm_processor_optimized import process_articles, token_usage_cache
+        from .email_sender import send_daily_digest
         
         # Step 1: Fetch RSS articles (parallel)
         articles = fetch_daily_news(db)
@@ -382,7 +383,7 @@ async def get_usage_stats():
     """
     Get token usage and cost statistics
     """
-    from llm_processor_optimized import token_usage_cache
+    from .llm_processor_optimized import token_usage_cache
     
     return {
         "total_tokens": token_usage_cache['total_tokens'],
@@ -417,8 +418,8 @@ async def trigger_digest_fast(
             raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set in environment")
         
         print("[STEP 1] Importing modules...")
-        from rss_fetcher import fetch_daily_news
-        from llm_processor_optimized import process_articles_async, token_usage_cache
+        from .rss_fetcher import fetch_daily_news
+        from .llm_processor_optimized import process_articles_async, token_usage_cache
         
         print("[STEP 2] Fetching RSS articles...")
         articles = fetch_daily_news(db)
@@ -435,7 +436,7 @@ async def trigger_digest_fast(
         sent_count = 0
         print("[STEP 4] Sending emails (optional)...")
         try:
-            from email_sender import send_daily_digest
+            from .email_sender import send_daily_digest
             sent_count = send_daily_digest(db)
             print(f"[STEP 4] Sent {sent_count} emails")
         except Exception as email_error:

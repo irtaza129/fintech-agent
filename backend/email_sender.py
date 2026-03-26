@@ -9,8 +9,8 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 from sqlalchemy.orm import Session
 
-from models import User, PortfolioStock, ProcessedSummary, SelectedTopic
-from config import (
+from .models import User, PortfolioStock, ProcessedSummary, SelectedTopic
+from .config import (
     EMAIL_ENABLED, EMAIL_PROVIDER, EMAIL_SENDER,
     RESEND_API_KEY, SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD
 )

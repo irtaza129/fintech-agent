@@ -6,11 +6,11 @@ from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
 from sqlalchemy.orm import Session
 
-from database import SessionLocal
-from rss_fetcher import fetch_daily_news
-from llm_processor import process_articles
-from email_sender import send_daily_digest
-from config import DIGEST_HOUR, DIGEST_MINUTE
+from .database import SessionLocal
+from .rss_fetcher import fetch_daily_news
+from .llm_processor_optimized import process_articles
+from .email_sender import send_daily_digest
+from .config import DIGEST_HOUR, DIGEST_MINUTE
 
 class DailyScheduler:
     def __init__(self):

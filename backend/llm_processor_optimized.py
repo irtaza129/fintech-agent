@@ -12,8 +12,8 @@ import openai
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-from models import RawArticle, ProcessedSummary
-from config import (
+from .models import RawArticle, ProcessedSummary
+from .config import (
     LLM_MODEL,
     OPENAI_API_KEY
 )
@@ -457,7 +457,7 @@ def process_articles(db: Session, limit_per_ticker: int = 3) -> int:
     """
     OPTIMIZED: Main function with batching and quota-gated early exit
     """
-    from models import PortfolioStock
+    from .models import PortfolioStock
 
     today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -499,8 +499,8 @@ def process_articles(db: Session, limit_per_ticker: int = 3) -> int:
 
     processor = LLMProcessor()
 
-    from rss_fetcher import RSSFetcher
-    from models import SelectedTopic
+    from .rss_fetcher import RSSFetcher
+    from .models import SelectedTopic
 
     fetcher = RSSFetcher(db)
     articles = fetcher.get_recent_unprocessed_articles(hours=24)

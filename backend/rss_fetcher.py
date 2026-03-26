@@ -8,9 +8,9 @@ from typing import List, Dict
 from sqlalchemy.orm import Session
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from models import RawArticle, PortfolioStock, SelectedTopic
-from config import RSS_FEEDS
-from ticker_extractor import extract_tickers
+from .models import RawArticle, PortfolioStock, SelectedTopic
+from .config import RSS_FEEDS
+from .ticker_extractor import extract_tickers
 
 class RSSFetcher:
     def __init__(self, db: Session):
