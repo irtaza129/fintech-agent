@@ -1,4 +1,4 @@
-FROM python:3.14
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -8,9 +8,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-WORKDIR /app
-
 EXPOSE 8000
 
-# Run the app as a package module so relative imports in `backend` work
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

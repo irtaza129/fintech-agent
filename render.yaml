@@ -23,6 +23,8 @@ services:
         value: 1000
       - key: EMAIL_ENABLED
         value: true
+      - key: EMAIL_PROVIDER
+        value: smtp
       - key: SMTP_SERVER
         value: smtp.gmail.com
       - key: SMTP_PORT
@@ -30,6 +32,12 @@ services:
       - key: EMAIL_SENDER
         sync: false
       - key: EMAIL_PASSWORD
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: DIGEST_SECRET
         sync: false
       - key: DIGEST_HOUR
         value: 7

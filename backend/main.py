@@ -312,9 +312,10 @@ def get_summaries(user_id: int, limit: int = 50, db: Session = Depends(get_db)):
     # Format response
     result = []
     for summary in summaries:
-        # Include topics from the original article
+        if not summary.article:
+            continue
         topics = summary.article.topics_detected.split(',') if summary.article.topics_detected else []
-        
+
         result.append({
             "id": summary.id,
             "stock_ticker": summary.stock_ticker,
@@ -326,7 +327,7 @@ def get_summaries(user_id: int, limit: int = 50, db: Session = Depends(get_db)):
             "created_at": summary.created_at,
             "article_title": summary.article.title,
             "article_url": summary.article.url,
-            "related_topics": [t.strip() for t in topics]  # NEW: Show which topics this relates to
+            "related_topics": [t.strip() for t in topics]
         })
     
     return result
@@ -432,15 +433,17 @@ async def trigger_digest_fast(
         llm_time = time.time() - llm_start
         print(f"[STEP 3] Processed {processed_count} summaries in {llm_time:.2f}s")
         
-        # Email is optional - don't fail if it errors
         sent_count = 0
+        email_error_msg = None
         print("[STEP 4] Sending emails (optional)...")
         try:
             from .email_sender import send_daily_digest
             sent_count = send_daily_digest(db)
             print(f"[STEP 4] Sent {sent_count} emails")
         except Exception as email_error:
-            print(f"[EMAIL WARNING] Email failed: {email_error}")
+            import traceback
+            email_error_msg = str(email_error)
+            print(f"[EMAIL ERROR] {traceback.format_exc()}")
         
         total_time = time.time() - start_time
         
@@ -450,6 +453,7 @@ async def trigger_digest_fast(
             "articles_fetched": len(articles),
             "summaries_processed": processed_count,
             "emails_sent": sent_count,
+            "email_error": email_error_msg,
             "tokens_used": token_usage_cache['total_tokens'],
             "estimated_cost": f"${token_usage_cache['total_cost']:.4f}",
             "timing": {
